@@ -6,10 +6,12 @@ import partridge as ptg
 from fiona import crs
 
 from .settings import WGS84
-from .summarizer import (generate_edge_and_wait_values,
-                         generate_summary_edge_costs,
-                         generate_summary_wait_times,
-                         get_modes_at_stops)
+from .summarizer import (
+    generate_edge_and_wait_values,
+    generate_summary_edge_costs,
+    generate_summary_wait_times,
+    get_modes_at_stops,
+)
 from .synthetic import SyntheticTransitNetwork
 from .toolkit import generate_graph_node_dataframe, get_nearest_nodes
 
@@ -18,8 +20,7 @@ class InsufficientSummaryResults(Exception):
     pass
 
 
-def generate_empty_md_graph(name: str,
-                            init_crs: Dict=crs.from_epsg(WGS84)):
+def generate_empty_md_graph(name: str, init_crs: Dict = crs.from_epsg(WGS84)):
     """
     Generates an empty multi-directed graph.
 
@@ -42,17 +43,18 @@ def generate_empty_md_graph(name: str,
 def nameify_stop_id(name, sid):
     name = str(name)
     sid = str(sid)
-    return '{}_{}'.format(name, sid)
+    return "{}_{}".format(name, sid)
 
 
 def generate_summary_graph_elements(
-        feed: ptg.gtfs.Feed,
-        target_time_start: float,
-        target_time_end: float,
-        fallback_stop_cost: float,
-        interpolate_times: bool,
-        stop_cost_method: Any,
-        use_multiprocessing: bool) -> Tuple[pd.DataFrame, pd.DataFrame]:
+    feed: ptg.gtfs.Feed,
+    target_time_start: float,
+    target_time_end: float,
+    fallback_stop_cost: float,
+    interpolate_times: bool,
+    stop_cost_method: Any,
+    use_multiprocessing: bool,
+) -> Tuple[pd.DataFrame, pd.DataFrame]:
     """
     Takes in a feed with a series of settings and produces two results: \
     a table of edge costs and a table of stop (or nodes).
@@ -109,30 +111,31 @@ def generate_summary_graph_elements(
         of the feed schedule.
     """
 
-    (all_edge_costs,
-     all_wait_times) = generate_edge_and_wait_values(
+    (all_edge_costs, all_wait_times) = generate_edge_and_wait_values(
         feed,
         target_time_start,
         target_time_end,
         interpolate_times,
         stop_cost_method,
-        use_multiprocessing)
+        use_multiprocessing,
+    )
 
     # Same sanity checks on the output before we continue
     _verify_outputs(all_edge_costs, all_wait_times)
 
     summary_edge_costs = generate_summary_edge_costs(all_edge_costs)
-    wait_times_by_stop = generate_summary_wait_times(all_wait_times,
-                                                     fallback_stop_cost)
+    wait_times_by_stop = generate_summary_wait_times(all_wait_times, fallback_stop_cost)
 
     return (summary_edge_costs, wait_times_by_stop)
 
 
-def generate_cross_feed_edges(G: nx.MultiDiGraph,
-                              name: str,
-                              stops_df: pd.DataFrame,
-                              exempt_nodes: List[str],
-                              connection_threshold: float) -> pd.DataFrame:
+def generate_cross_feed_edges(
+    G: nx.MultiDiGraph,
+    name: str,
+    stops_df: pd.DataFrame,
+    exempt_nodes: List[str],
+    connection_threshold: float,
+) -> pd.DataFrame:
     """
     Generates a DataFrame containing a list of new node-pairs that should \
     have walk connection edges added between them, determined based on a \
@@ -161,10 +164,8 @@ def generate_cross_feed_edges(G: nx.MultiDiGraph,
         with the attributes: from stop id, to stop id, and distance (in meters)
     """
     # Terminate this process early if the graph is empty
-    if (G.number_of_nodes() == 0):
-        return pd.DataFrame({'stop_id': [],
-                             'to_nodes': [],
-                             'edge_costs': []})
+    if G.number_of_nodes() == 0:
+        return pd.DataFrame({"stop_id": [], "to_nodes": [], "edge_costs": []})
 
     # First, we need a DataFrame representation of the nodes in the graph
     node_df = generate_graph_node_dataframe(G)
@@ -188,36 +189,34 @@ def generate_cross_feed_edges(G: nx.MultiDiGraph,
         lat = float(row.stop_lat)
         lon = float(row.stop_lon)
         point = (lat, lon)
-        nearest_nodes = get_nearest_nodes(node_df,
-                                          point,
-                                          connection_threshold,
-                                          exempt_id=full_sid)
+        nearest_nodes = get_nearest_nodes(
+            node_df, point, connection_threshold, exempt_id=full_sid
+        )
 
         # Iterate through series results and add to output
-        for node_id, dist_val in nearest_nodes.iteritems():
+        for node_id, dist_val in nearest_nodes.items():
             stop_ids.append(sid)
             to_nodes.append(node_id)
             edge_costs.append(dist_val)
 
-    return pd.DataFrame({'stop_id': stop_ids,
-                         'to_node': to_nodes,
-                         'distance': edge_costs})
+    return pd.DataFrame(
+        {"stop_id": stop_ids, "to_node": to_nodes, "distance": edge_costs}
+    )
 
 
-def _verify_outputs(all_edge_costs: pd.DataFrame,
-                    all_wait_times: pd.DataFrame) -> None:
+def _verify_outputs(all_edge_costs: pd.DataFrame, all_wait_times: pd.DataFrame) -> None:
     # Handle if there are no valid edges returned (or wait times)
     if all_edge_costs is None or len(all_edge_costs) == 0:
-        raise InsufficientSummaryResults('The target time frame returned no '
-                                         'valid edge costs from feed object.')
+        raise InsufficientSummaryResults(
+            "The target time frame returned no " "valid edge costs from feed object."
+        )
     if all_wait_times is None or len(all_wait_times) == 0:
-        raise InsufficientSummaryResults('The target time frame returned no '
-                                         'valid wait times from feed object.')
+        raise InsufficientSummaryResults(
+            "The target time frame returned no " "valid wait times from feed object."
+        )
 
 
-def _add_modes_to_wait_times(
-        feed: ptg.gtfs.Feed,
-        wait_times_by_stop: pd.DataFrame):
+def _add_modes_to_wait_times(feed: ptg.gtfs.Feed, wait_times_by_stop: pd.DataFrame):
     # Note: wait_times_by_stop dataframe has 2 columns when passed in:
     #           stop_id, avg_cost
     #       stops_modes_lookup will have 2 columns:
@@ -226,25 +225,24 @@ def _add_modes_to_wait_times(
 
     # Merge the two onto one dataframe with a total of 3 columns:
     #       stop_id, avg_cost, modes
-    return pd.merge(
-        wait_times_by_stop,
-        stops_modes_lookup,
-        on='stop_id',
-        how='left')
+    return pd.merge(wait_times_by_stop, stops_modes_lookup, on="stop_id", how="left")
 
 
-def _merge_stop_waits_and_attributes(wait_times_by_stop: pd.DataFrame,
-                                     feed_stops: pd.DataFrame) -> pd.DataFrame:
-    wt_sub = wait_times_by_stop[['avg_cost', 'modes', 'stop_id']]
-    fs_sub = feed_stops[['stop_lat', 'stop_lon', 'stop_id']]
-    mdf = pd.merge(wt_sub, fs_sub, on='stop_id', how='left')
+def _merge_stop_waits_and_attributes(
+    wait_times_by_stop: pd.DataFrame, feed_stops: pd.DataFrame
+) -> pd.DataFrame:
+    wt_sub = wait_times_by_stop[["avg_cost", "modes", "stop_id"]]
+    fs_sub = feed_stops[["stop_lat", "stop_lon", "stop_id"]]
+    mdf = pd.merge(wt_sub, fs_sub, on="stop_id", how="left")
     return mdf[~mdf.isnull()]
 
 
-def _add_cross_feed_edges(G: nx.MultiDiGraph,
-                          sid_lookup: Dict[str, str],
-                          cross_feed_edges: pd.DataFrame,
-                          walk_speed_kmph: float) -> nx.MultiDiGraph:
+def _add_cross_feed_edges(
+    G: nx.MultiDiGraph,
+    sid_lookup: Dict[str, str],
+    cross_feed_edges: pd.DataFrame,
+    walk_speed_kmph: float,
+) -> nx.MultiDiGraph:
     # Add the cross feed edge connectors to the graph to
     # capture transfer points
     for i, row in cross_feed_edges.iterrows():
@@ -263,14 +261,16 @@ def _add_cross_feed_edges(G: nx.MultiDiGraph,
         in_seconds = kmph * 60 * 60
 
         # And then add it to the graph
-        G.add_edge(full_sid, to, length=in_seconds, mode='walk')
+        G.add_edge(full_sid, to, length=in_seconds, mode="walk")
 
 
-def _add_nodes_and_edges(G: nx.MultiDiGraph,
-                         name: str,
-                         stops_df: pd.DataFrame,
-                         summary_edge_costs: pd.DataFrame,
-                         bidirectional: bool=False) -> Dict[str, str]:
+def _add_nodes_and_edges(
+    G: nx.MultiDiGraph,
+    name: str,
+    stops_df: pd.DataFrame,
+    summary_edge_costs: pd.DataFrame,
+    bidirectional: bool = False,
+) -> Dict[str, str]:
     # As we convert stop ids to actual nodes, let's keep track of those names
     # here so that we can reference them when we add connector edges across
     # the various feeds loaded into the graph
@@ -282,33 +282,37 @@ def _add_nodes_and_edges(G: nx.MultiDiGraph,
 
         # Add to the lookup crosswalk dictionary
         sid_lookup[sid] = full_sid
-        G.add_node(full_sid,
-                   boarding_cost=row.avg_cost,
-                   modes=row.modes,
-                   y=row.stop_lat,
-                   x=row.stop_lon)
+        G.add_node(
+            full_sid,
+            boarding_cost=row.avg_cost,
+            modes=row.modes,
+            y=row.stop_lat,
+            x=row.stop_lon,
+        )
 
     for i, row in summary_edge_costs.iterrows():
         sid_fr = nameify_stop_id(name, row.from_stop_id)
         sid_to = nameify_stop_id(name, row.to_stop_id)
-        G.add_edge(sid_fr, sid_to, length=row.edge_cost, mode='transit')
+        G.add_edge(sid_fr, sid_to, length=row.edge_cost, mode="transit")
 
         # If want to add both directions in this step, we can
         # by reversing the to/from node order on edge
         if bidirectional:
-            G.add_edge(sid_to, sid_fr, length=row.edge_cost, mode='transit')
+            G.add_edge(sid_to, sid_fr, length=row.edge_cost, mode="transit")
 
     return sid_lookup
 
 
-def populate_graph(G: nx.MultiDiGraph,
-                   name: str,
-                   feed: ptg.gtfs.Feed,
-                   wait_times_by_stop: pd.DataFrame,
-                   summary_edge_costs: pd.DataFrame,
-                   connection_threshold: Union[int, float],
-                   walk_speed_kmph: float=4.5,
-                   impute_walk_transfers: bool=True) -> nx.MultiDiGraph:
+def populate_graph(
+    G: nx.MultiDiGraph,
+    name: str,
+    feed: ptg.gtfs.Feed,
+    wait_times_by_stop: pd.DataFrame,
+    summary_edge_costs: pd.DataFrame,
+    connection_threshold: Union[int, float],
+    walk_speed_kmph: float = 4.5,
+    impute_walk_transfers: bool = True,
+) -> nx.MultiDiGraph:
     """
     Takes an existing network graph object and adds all new nodes, transit \
     edges, and connector edges between existing and new nodes (stop ids).
@@ -348,8 +352,7 @@ def populate_graph(G: nx.MultiDiGraph,
     # be used for both the addition of new stop nodes and the addition of
     # cross feed edges later on (that join one feeds stops to the other if
     # they are within the connection threshold).
-    stops_df = _merge_stop_waits_and_attributes(
-        wait_times_and_modes, feed.stops)
+    stops_df = _merge_stop_waits_and_attributes(wait_times_and_modes, feed.stops)
 
     # Mutates the G network object
     sid_lookup = _add_nodes_and_edges(G, name, stops_df, summary_edge_costs)
@@ -360,9 +363,9 @@ def populate_graph(G: nx.MultiDiGraph,
     if impute_walk_transfers:
         # In which case, we do not have any exempt nodes
         exempt_nodes = []
-    cross_feed_edges = generate_cross_feed_edges(G, name, stops_df,
-                                                 exempt_nodes,
-                                                 float(connection_threshold))
+    cross_feed_edges = generate_cross_feed_edges(
+        G, name, stops_df, exempt_nodes, float(connection_threshold)
+    )
 
     # Mutates the G network object
     _add_cross_feed_edges(G, sid_lookup, cross_feed_edges, walk_speed_kmph)
@@ -371,12 +374,13 @@ def populate_graph(G: nx.MultiDiGraph,
 
 
 def make_synthetic_system_network(
-        G: nx.MultiDiGraph,
-        name: str,
-        synthetic_network: SyntheticTransitNetwork,
-        connection_threshold: Union[int, float],
-        walk_speed_kmph: float=4.5,
-        impute_walk_transfers: bool=True) -> nx.MultiDiGraph:
+    G: nx.MultiDiGraph,
+    name: str,
+    synthetic_network: SyntheticTransitNetwork,
+    connection_threshold: Union[int, float],
+    walk_speed_kmph: float = 4.5,
+    impute_walk_transfers: bool = True,
+) -> nx.MultiDiGraph:
     """
     Consume and validate an input TransitJSON for conversion to network \
     graph components. Add the resulting new network components to the \
@@ -418,8 +422,7 @@ def make_synthetic_system_network(
         edges = line.edges
 
         # Mutates the G network object
-        sid_lookup_sub = _add_nodes_and_edges(
-            G, name, nodes, edges, line.bidirectional)
+        sid_lookup_sub = _add_nodes_and_edges(G, name, nodes, edges, line.bidirectional)
 
         # Update the parent sid with new values
         for key, val in sid_lookup_sub.items():
@@ -440,9 +443,9 @@ def make_synthetic_system_network(
     if impute_walk_transfers:
         # In which case, we do not have any exempt nodes
         exempt_nodes = []
-    cross_feed_edges = generate_cross_feed_edges(G, name, all_nodes,
-                                                 exempt_nodes,
-                                                 connection_threshold)
+    cross_feed_edges = generate_cross_feed_edges(
+        G, name, all_nodes, exempt_nodes, connection_threshold
+    )
     # Mutates the G network object
     _add_cross_feed_edges(G, sid_lookup, cross_feed_edges, walk_speed_kmph)
 

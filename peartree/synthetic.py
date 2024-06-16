@@ -13,10 +13,11 @@ from .toolkit import generate_random_name
 
 
 def _generate_point_array_override(
-        mp_array: Iterable[Point],
-        route_shape: LineString,
-        existing_graph_nodes: gpd.GeoDataFrame,
-        stop_distance_distribution: float) -> Iterable[Point]:
+    mp_array: Iterable[Point],
+    route_shape: LineString,
+    existing_graph_nodes: gpd.GeoDataFrame,
+    stop_distance_distribution: float,
+) -> Iterable[Point]:
     # TODO: Better parameterize the factor used with the distance distribution
     # Figure that we give a 10% "give" - this is, if a stop is within
     # 10% of the target segment distance, then it should be re-assigned
@@ -50,7 +51,7 @@ def _generate_point_array_override(
     # TODO: Right now we only consider the stops as points (shapes),
     #       but in the future should aim to reuse graph nodes that are
     #       the same location by passing along the node id
-    intersecting_stops = intersecting_stops_gdf['geometry'].values
+    intersecting_stops = intersecting_stops_gdf["geometry"].values
 
     mp_array_override = []
     for pt in mp_array:
@@ -82,28 +83,28 @@ def _generate_point_array_override(
         # we need to use the points to break up the line and get the
         # segment distances in the next step
         adj_projected = route_shape.project(first_nearest)
-        adjusted_nearest = route_shape.interpolate(adj_projected,
-                                                   normalized=True)
+        adjusted_nearest = route_shape.interpolate(adj_projected, normalized=True)
         mp_array_override.append(adjusted_nearest)
 
     return mp_array_override
 
 
 def generate_meter_projected_chunks(
-        route_shape: LineString,
-        custom_stops: Optional[List[List[float]]]=None,
-        stop_distance_distribution: int=None,
-        from_proj='epsg:4326',
-        to_proj='epsg:2163',
-        existing_graph_nodes: Optional[pd.DataFrame]=None) -> List[LineString]:
-
+    route_shape: LineString,
+    custom_stops: Optional[List[List[float]]] = None,
+    stop_distance_distribution: int = None,
+    from_proj="epsg:4326",
+    to_proj="epsg:2163",
+    existing_graph_nodes: Optional[pd.DataFrame] = None,
+) -> List[LineString]:
     # Reproject 4326 lat/lon coordinates to equal area
     project = partial(
         pyproj.transform,
         # source coordinate system
         pyproj.Proj(init=from_proj, preserve_units=True),
         # destination coordinate system
-        pyproj.Proj(init=to_proj, preserve_units=True))
+        pyproj.Proj(init=to_proj, preserve_units=True),
+    )
 
     rs2 = transform(project, route_shape)  # apply projection
 
@@ -127,8 +128,12 @@ def generate_meter_projected_chunks(
     else:
         # Sanity check (this should never occur due to checks in class init)
         if stop_distance_distribution is None:
-            raise ValueError(('Auto stop assignment triggered, but '
-                              'stop_distance_distribution is Nonetype'))
+            raise ValueError(
+                (
+                    "Auto stop assignment triggered, but "
+                    "stop_distance_distribution is Nonetype"
+                )
+            )
 
         # Divide the target route into roughly equal length segments
         # and get the number that would be needed to accomplish this
@@ -137,7 +142,7 @@ def generate_meter_projected_chunks(
         # Create the array of break points/joints
         mp_array = []
         for i in range(1, stop_count):
-            fr = (i / stop_count)
+            fr = i / stop_count
             mp_array.append(rs2.interpolate(fr, normalized=True))
 
         # At this point, we have an array of what might be described as
@@ -147,10 +152,8 @@ def generate_meter_projected_chunks(
         # instead.
         if existing_graph_nodes is not None and len(existing_graph_nodes) > 0:
             mp_array_override = _generate_point_array_override(
-                mp_array,
-                rs2,
-                existing_graph_nodes,
-                stop_distance_distribution)
+                mp_array, rs2, existing_graph_nodes, stop_distance_distribution
+            )
 
             # Now that mp_array_override has been fully populated,
             # can now override the original array holding the estimated
@@ -169,11 +172,11 @@ def generate_meter_projected_chunks(
     # Take chunks and merge in the small lines
     # from intersection inside of the buffered circles
     # and attach to nearest larger line
-    clean_chunks = [chunks[0]]
-    r = len(chunks)
+    clean_chunks = [chunks.geoms[0]]
+    r = len(chunks.geoms)
     for c in range(1, r):
         latest = clean_chunks[-1]
-        current = chunks[c]
+        current = chunks.geoms[c]
         # Again, this is a week point of the buffer of
         # 1 meter method
         if latest.length <= 2:
@@ -204,29 +207,31 @@ def generate_stop_points(chunks: List[LineString]) -> List[Point]:
     # So we can reproject back out of equal area to 4326
     project = partial(
         pyproj.transform,
-        pyproj.Proj(init='epsg:2163'),  # source coordinate system
-        pyproj.Proj(init='epsg:4326'))  # destination coordinate system
+        pyproj.Proj(init="epsg:2163"),  # source coordinate system
+        pyproj.Proj(init="epsg:4326"),
+    )  # destination coordinate system
 
     ap_ma_reproj = transform(project, ap_ma)  # apply projection
 
     # Final step will be to pull out all points back into a list
-    return [p for p in ap_ma_reproj]
+    return [p for p in ap_ma_reproj.geoms]
 
 
 def generate_stop_ids(stops_count: int) -> List[str]:
     shape_name = generate_random_name(5)
     stop_names = []
     for i in range(stops_count):
-        stop_names.append('_'.join([shape_name, str(i)]))
+        stop_names.append("_".join([shape_name, str(i)]))
     return stop_names
 
 
 def generate_nodes_df(
-        stop_ids: List[str],
-        all_points: List[Point],
-        headway: float,
-        wait_time_cost_method: Any,
-        mode: Optional[str]) -> pd.DataFrame:
+    stop_ids: List[str],
+    all_points: List[Point],
+    headway: float,
+    wait_time_cost_method: Any,
+    mode: Optional[str],
+) -> pd.DataFrame:
     avg_costs = []
     stop_lats = []
     stop_lons = []
@@ -247,21 +252,22 @@ def generate_nodes_df(
             # When no mode is provided just pass through empty list
             mode_col.append([])
 
-    nodes_df = pd.DataFrame({
-        'stop_id': stop_ids,
-        'avg_cost': avg_costs,
-        'stop_lat': stop_lats,
-        'stop_lon': stop_lons,
-        'modes': mode_col,
-    })
+    nodes_df = pd.DataFrame(
+        {
+            "stop_id": stop_ids,
+            "avg_cost": avg_costs,
+            "stop_lat": stop_lats,
+            "stop_lon": stop_lons,
+            "modes": mode_col,
+        }
+    )
 
     return nodes_df
 
 
 def generate_edges_df(
-        stop_ids: List[str],
-        chunks: List[LineString],
-        avg_speed: float) -> pd.DataFrame:
+    stop_ids: List[str], chunks: List[LineString], avg_speed: float
+) -> pd.DataFrame:
     from_stop_ids = []
     to_stop_ids = []
     edge_costs = []
@@ -271,11 +277,13 @@ def generate_edges_df(
 
     # Sanity check
     if not len(chunks) == len(paired_nodes):
-        raise Exception('Chunking operation did not result '
-                        'correct route shape subdivisions. '
-                        '\nChunk len: {} \nPaired len: {}'.format(
-                            str(len(chunks)),
-                            str(len(paired_nodes))))
+        raise Exception(
+            "Chunking operation did not result "
+            "correct route shape subdivisions. "
+            "\nChunk len: {} \nPaired len: {}".format(
+                str(len(chunks)), str(len(paired_nodes))
+            )
+        )
 
     for i, nodes in enumerate(paired_nodes):
         point_a = nodes[0]
@@ -294,11 +302,13 @@ def generate_edges_df(
         in_seconds = in_hours * 60 * 60
         edge_costs.append(in_seconds)
 
-    edges_df = pd.DataFrame({
-        'from_stop_id': from_stop_ids,
-        'to_stop_id': to_stop_ids,
-        'edge_cost': edge_costs,
-    })
+    edges_df = pd.DataFrame(
+        {
+            "from_stop_id": from_stop_ids,
+            "to_stop_id": to_stop_ids,
+            "edge_cost": edge_costs,
+        }
+    )
 
     return edges_df
 
@@ -306,42 +316,43 @@ def generate_edges_df(
 def _validate_feature_properties(props: Dict) -> Dict:
     fresh_props = {}
 
-    if 'headway' in props:
-        fresh_props['headway'] = float(props['headway'])
+    if "headway" in props:
+        fresh_props["headway"] = float(props["headway"])
 
-    if 'average_speed' in props:
-        fresh_props['average_speed'] = float(props['average_speed'])
+    if "average_speed" in props:
+        fresh_props["average_speed"] = float(props["average_speed"])
 
-    if 'bidirectional' in props:
-        fresh_props['bidirectional'] = bool(props['bidirectional'])
+    if "bidirectional" in props:
+        fresh_props["bidirectional"] = bool(props["bidirectional"])
 
-    if 'mode' in props:
+    if "mode" in props:
         # GTFS mode types are held as strings
-        fresh_props['mode'] = str(props['mode'])
+        fresh_props["mode"] = str(props["mode"])
 
     # For this section, either the custom stops of the stop distance
     # value must be set
-    if 'stops' in props:
+    if "stops" in props:
         # Make sure that this value is supplied as a list
-        if isinstance(props['stops'], list):
-            fresh_props['custom_stops'] = props['stops']
+        if isinstance(props["stops"], list):
+            fresh_props["custom_stops"] = props["stops"]
 
-    if 'stop_distance_distribution' in props:
-        fresh_props['stop_dist'] = float(props['stop_distance_distribution'])
+    if "stop_distance_distribution" in props:
+        fresh_props["stop_dist"] = float(props["stop_distance_distribution"])
 
     # Sanity check; if both custom stops and stops distance are None
     # then we cannot proceed
-    no_stops = 'custom_stops' not in fresh_props
-    no_dist = 'stop_dist' not in fresh_props
+    no_stops = "custom_stops" not in fresh_props
+    no_dist = "stop_dist" not in fresh_props
     if no_stops and no_dist:
-        raise ValueError('Synthetic network addition must have either '
-                         'custom stops or stops distance default set.')
+        raise ValueError(
+            "Synthetic network addition must have either "
+            "custom stops or stops distance default set."
+        )
 
-    if 'mode' not in fresh_props:
+    if "mode" not in fresh_props:
         # Mode id based on GTFS mode spec - routes supplied absent modes
         # may lead to undesired effects
-        warnings.warn(
-            'No mode id supplied for synthetic route, leaving blank.')
+        warnings.warn("No mode id supplied for synthetic route, leaving blank.")
 
     return fresh_props
 
@@ -354,37 +365,38 @@ class SyntheticTransitLine(abc.ABC):
     """
 
     def __init__(
-            self,
-            feature: Dict[str, Any],
-            wait_time_cost_method: Any,
-            existing_graph_nodes: Optional[pd.DataFrame]=None):
+        self,
+        feature: Dict[str, Any],
+        wait_time_cost_method: Any,
+        existing_graph_nodes: Optional[pd.DataFrame] = None,
+    ):
         # All values have defaults built in; which are overridden when the
         # user supplies, through the TransitJSON, custom values for those
         # properties.
-        feature_props = feature['properties']
+        feature_props = feature["properties"]
         props = _validate_feature_properties(feature_props)
 
-        self._mode = props.get('mode', None)
+        self._mode = props.get("mode", None)
 
         # Headway measured in seconds (30 minutes to seconds)
-        self._headway = props.get('headway', 30 * 60)
+        self._headway = props.get("headway", 30 * 60)
         self._wait_time_cost_method = wait_time_cost_method
 
         # Speed is measured in miles per hour
-        self._average_speed = props.get('average_speed', 8)
+        self._average_speed = props.get("average_speed", 8)
 
-        self._bidirectional = props.get('bidirectional', False)
+        self._bidirectional = props.get("bidirectional", False)
 
         # Via the validation step; one of these two will be set
-        custom_stops = props.get('custom_stops', None)
+        custom_stops = props.get("custom_stops", None)
         self.used_custom_stops = custom_stops is not None
 
         # Note that stops distances are set in meters (e.g. 402 meters
         # is the equivalent of every 1/4 of a mile)
-        stop_distance = props.get('stop_dist', 402)
+        stop_distance = props.get("stop_dist", 402)
 
         # We require this GeoJSON coordinate component to be valid format
-        self._route_path = shape(feature['geometry'])
+        self._route_path = shape(feature["geometry"])
 
         # Generate reference geometry data, note (and this is confusing) but
         # chunks is in meter projection and all_pts is in web mercator
@@ -394,7 +406,8 @@ class SyntheticTransitLine(abc.ABC):
             route_shape=self._route_path,
             custom_stops=custom_stops,
             stop_distance_distribution=stop_distance,
-            existing_graph_nodes=existing_graph_nodes)
+            existing_graph_nodes=existing_graph_nodes,
+        )
 
         # Generate stops from each chunk and assign each a unique id
         all_pts = generate_stop_points(chunks)
@@ -402,15 +415,9 @@ class SyntheticTransitLine(abc.ABC):
 
         # Produce key graph components
         self._nodes = generate_nodes_df(
-            stop_ids,
-            all_pts,
-            self._headway,
-            self._wait_time_cost_method,
-            self._mode)
-        self._edges = generate_edges_df(
-            stop_ids,
-            chunks,
-            self._average_speed)
+            stop_ids, all_pts, self._headway, self._wait_time_cost_method, self._mode
+        )
+        self._edges = generate_edges_df(stop_ids, chunks, self._average_speed)
 
     def get_nodes(self) -> pd.DataFrame:
         # Do this to prevent upstream mutation of the reference DataFrame
@@ -455,20 +462,20 @@ class SyntheticTransitNetwork(abc.ABC):
     """
 
     def __init__(
-            self,
-            feature_collection: Dict[str, Any],
-            wait_time_cost_method: Any,
-            existing_graph_nodes: Optional[pd.DataFrame]=None):
+        self,
+        feature_collection: Dict[str, Any],
+        wait_time_cost_method: Any,
+        existing_graph_nodes: Optional[pd.DataFrame] = None,
+    ):
         # Initialize an empty list
         self._lines = []
 
         # For each Feature in the FeatureCollection group; add an additional
         # instantiated SyntheticTransitLine object
-        for feature in feature_collection['features']:
+        for feature in feature_collection["features"]:
             new_line = SyntheticTransitLine(
-                feature,
-                wait_time_cost_method,
-                existing_graph_nodes)
+                feature, wait_time_cost_method, existing_graph_nodes
+            )
             self._lines.append(new_line)
 
     def _create_all_lines_generator(self):
